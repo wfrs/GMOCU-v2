@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+dist/
+build/
+out/
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+
+# Build outputs
+*.exe
+*.app
+*.dmg
+*.deb
+*.rpm
