@@ -16,7 +16,7 @@
     "start:log": "vitest run && env -u ELECTRON_RUN_AS_NODE electron-vite dev 2>&1 | tee app.log",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "@electron/rebuild -f -w better-sqlite3",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:linux": "electron-vite build && electron-builder --linux",
@@ -35,7 +35,7 @@
     "@tanstack/react-query": "^5.62.0",
     "better-sqlite3": "^11.5.0",
     "dayjs": "^1.11.20",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "pdfkit": "^0.18.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
@@ -44,6 +44,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/pdfkit": "^0.17.5",
@@ -53,11 +54,10 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "drizzle-kit": "^0.30.0",
-    "electron": "^32.3.3",
+    "drizzle-kit": "^0.31.10",
+    "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
-    "electron-rebuild": "^3.2.9",
-    "electron-vite": "^2.3.0",
+    "electron-vite": "^5.0.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.37.0",
@@ -65,7 +65,7 @@
     "prettier": "^3.3.0",
     "sql.js": "^1.14.1",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.5"
   },
   "build": {
     "appId": "nl.freedom.rs.jlab",
@@ -83,25 +83,43 @@
       {
         "from": "resources",
         "to": "resources",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build-resources/icons/win/icon.ico"
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "icon": "build-resources/icons/mac/icon.icns",
       "category": "public.app-category.productivity"
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build-resources/icons/png/512x512.png",
       "category": "Science"
