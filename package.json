@@ -1,6 +1,6 @@
 {
   "name": "jlab",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JLab — Jores Lab plasmid & GMO management",
   "main": "./out/main/index.js",
   "scripts": {
