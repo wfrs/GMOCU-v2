@@ -1,14 +1,14 @@
-# GMOCU-v2
+# JLab
 
-Modern desktop application for GMO plasmid database management and documentation.
+Modern desktop application for synthetic and molecular biology lab management — built for the Jores Lab.
 
 ## About
 
-This is a complete rebuild of the GMOCU plasmid database application, designed to provide a modern, user-friendly interface for managing GMO documentation in accordance with German GenTAufzV regulations.
+JLab is a complete rebuild of the GMOCU plasmid database tool, expanded into a broader lab management platform. It provides a modern, user-friendly interface for managing GMO documentation in accordance with German GenTAufzV regulations, along with other day-to-day synthetic biology lab workflows.
 
 ## Status
 
-🚧 **In Development** - Architecture and technology stack being evaluated
+🚧 **In Development** - Architecture being finalized before coding begins
 
 ## Legacy Application
 
@@ -16,7 +16,7 @@ The original Python/PySimpleGUI application can be found in `gmocu-GMOCU-0.73_OL
 
 ## Development
 
-To be determined based on technology stack selection.
+Tech stack: Electron (`electron-vite`), React, `better-sqlite3` + Drizzle ORM, React Query, Zustand, Zod.
 
 ## License
 

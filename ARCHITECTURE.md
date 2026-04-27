@@ -1,6 +1,7 @@
-# GMOCU-v2 Architecture
+# JLab Architecture
 
 ## Table of Contents
+
 1. [System Overview](#system-overview)
 2. [Technology Stack](#technology-stack)
 3. [Project Structure](#project-structure)
@@ -19,16 +20,19 @@
 ## 1. System Overview
 
 ### Application Purpose
-Desktop application for managing plasmid databases and GMO documentation for German biosafety compliance (GenTAufzV).
+
+Desktop lab management tool for the Jores Lab — covering GMO plasmid documentation (German GenTAufzV compliance) and broader synthetic/molecular biology workflows.
 
 ### Core Capabilities
-- **Data Management**: CRUD operations for plasmids, features, organisms, GMOs
-- **File Handling**: GenBank files, attachments (BLOB), Excel imports/exports
-- **External Sync**: JBEI/ice, Google Sheets/Drive, Filebrowser
-- **Report Generation**: German Formblatt-Z compliance reports
-- **Offline-First**: All data stored locally in SQLite
+
+* **Data Management**: CRUD operations for plasmids, features, organisms, GMOs
+* **File Handling**: GenBank files, attachments (BLOB), Excel imports/exports
+* **External Sync**: JBEI/ice, Google Sheets/Drive, Filebrowser
+* **Report Generation**: German Formblatt-Z compliance reports
+* **Offline-First**: All data stored locally in SQLite
 
 ### Design Principles
+
 1. **Separation of Concerns**: Clear boundaries between UI, business logic, and data
 2. **Type Safety**: TypeScript strict mode throughout
 3. **Security**: Database isolated in main process, no direct renderer access
@@ -40,6 +44,7 @@ Desktop application for managing plasmid databases and GMO documentation for Ger
 ## 2. Technology Stack
 
 ### Core Framework
+
 ```
 Electron 28+              Desktop runtime
 React 18                  UI framework
@@ -48,6 +53,7 @@ electron-vite             Build tool with HMR
 ```
 
 ### Data Layer
+
 ```
 better-sqlite3            Native SQLite driver
 Drizzle ORM               Type-safe query builder
@@ -55,14 +61,20 @@ drizzle-kit               Schema migrations
 ```
 
 ### State Management
+
 ```
-Zustand                   Global UI state
+Zustand                   Global UI state (ephemeral only — not settings source of truth)
 React Query (TanStack)    Server/DB state & caching
 React Hook Form           Form state
 Zod                       Schema validation
 ```
 
+> **Decision**: SQLite is the single source of truth for all settings (theme, layout, font size, etc.).
+> Zustand holds only transient UI state (e.g. which modal is open, current selection). On app start,
+> settings are loaded from SQLite via IPC and applied. Zustand is never persisted to localStorage for settings.
+
 ### UI Components
+
 ```
 Mantine 7                 Component library
 @mantine/core             Core components
@@ -75,6 +87,7 @@ Mantine 7                 Component library
 ```
 
 ### File & Data Processing
+
 ```
 exceljs                   Excel generation/parsing
 fuse.js                   Fuzzy search
@@ -85,6 +98,7 @@ react-dropzone            File uploads
 ```
 
 ### Developer Tools
+
 ```
 ESLint                    Linting
 Prettier                  Code formatting
@@ -97,7 +111,7 @@ Electron Builder          Packaging & distribution
 ## 3. Project Structure
 
 ```
-gmocu-v2/
+jlab/
 ├── src/
 │   ├── main/                      # Electron main process
 │   │   ├── index.ts               # Main entry point
@@ -165,9 +179,8 @@ gmocu-v2/
 │   │   │   │   ├── useFeatures.ts
 │   │   │   │   └── ...
 │   │   │   ├── store/             # Zustand stores
-│   │   │   │   ├── ui.ts          # UI state
-│   │   │   │   ├── selection.ts   # Current selections
-│   │   │   │   └── theme.ts       # Theme preferences
+│   │   │   │   ├── ui.ts          # Transient UI state only
+│   │   │   │   └── selection.ts   # Current selections
 │   │   │   ├── lib/               # Libraries & utilities
 │   │   │   │   ├── ipc-client.ts  # IPC wrapper
 │   │   │   │   ├── query-client.ts # React Query setup
@@ -276,7 +289,7 @@ gmocu-v2/
 
 #### Core Tables
 
-```typescript
+```
 // Plasmids - Main entity
 table: plasmids {
   id: integer (PK, autoincrement)
@@ -363,7 +376,9 @@ table: selection_values {
 }
 -- Pre-populated: 'Planned', 'In Progress', 'Complete', 'Abandoned'
 
-// Settings - Application configuration (singleton)
+// Settings - Application configuration (singleton, source of truth)
+// Theme, layout, font size, and all user preferences live here.
+// The renderer reads these on startup via IPC and must not cache them in localStorage.
 table: settings {
   id: integer (PK, always 1)
   initials: text
@@ -387,10 +402,10 @@ table: ice_credentials {
   id: integer (PK, autoincrement)
   alias: text
   ice_instance: text (URL)
-  ice_token: text (encrypted)
+  ice_token: text (encrypted via safeStorage)
   filebrowser_instance: text (URL, nullable)
   filebrowser_user: text (nullable)
-  filebrowser_password: text (encrypted, nullable)
+  filebrowser_password: text (encrypted via safeStorage, nullable)
   created_at: timestamp
   updated_at: timestamp
 }
@@ -400,7 +415,7 @@ table: google_credentials {
   id: integer (PK, always 1)
   sheets_id: text (nullable)
   drive_folder_id: text (nullable)
-  service_account_json: text (encrypted, nullable)
+  service_account_json: text (encrypted via safeStorage, nullable)
   updated_at: timestamp
 }
 
@@ -426,7 +441,7 @@ table: migrations {
 
 ### Indexes
 
-```sql
+```
 CREATE INDEX idx_plasmids_name ON plasmids(name);
 CREATE INDEX idx_plasmids_status ON plasmids(status_id);
 CREATE INDEX idx_features_annotation ON features(annotation);
@@ -439,7 +454,8 @@ CREATE INDEX idx_attachments_plasmid ON attachments(plasmid_id);
 ### Data Access Patterns
 
 #### Read Operations
-```typescript
+
+```
 // Most common queries (optimize these)
 1. List plasmids (paginated, filtered by status)
 2. Get plasmid with cassettes + GMOs + attachments (single query with joins)
@@ -449,7 +465,8 @@ CREATE INDEX idx_attachments_plasmid ON attachments(plasmid_id);
 ```
 
 #### Write Operations
-```typescript
+
+```
 // Transaction boundaries
 1. Create plasmid → Insert cassettes → Return full object
 2. Update plasmid → Update cassettes (delete old + insert new)
@@ -459,7 +476,8 @@ CREATE INDEX idx_attachments_plasmid ON attachments(plasmid_id);
 ```
 
 #### Data Integrity Rules
-```typescript
+
+```
 1. Plasmid names must be unique
 2. Feature annotations must be unique
 3. Organism short_names must be unique
@@ -500,7 +518,6 @@ export interface IPCResponse<T> {
 // ========== PLASMIDS ==========
 
 export namespace PlasmidsIPC {
-  // List plasmids (with pagination & filters)
   export const listSchema = z.object({
     page: z.number().default(1),
     pageSize: z.number().default(50),
@@ -515,7 +532,6 @@ export namespace PlasmidsIPC {
     pageSize: number;
   };
 
-  // Get plasmid by ID (with relations)
   export const getByIdSchema = z.object({
     id: z.number(),
     include: z.object({
@@ -527,7 +543,6 @@ export namespace PlasmidsIPC {
   export type GetByIdParams = z.infer<typeof getByIdSchema>;
   export type GetByIdResult = PlasmidWithRelations;
 
-  // Create plasmid
   export const createSchema = z.object({
     name: z.string().min(1),
     alias: z.string().optional(),
@@ -549,21 +564,14 @@ export namespace PlasmidsIPC {
   export type CreateParams = z.infer<typeof createSchema>;
   export type CreateResult = PlasmidWithRelations;
 
-  // Update plasmid
-  export const updateSchema = createSchema.extend({
-    id: z.number(),
-  });
+  export const updateSchema = createSchema.extend({ id: z.number() });
   export type UpdateParams = z.infer<typeof updateSchema>;
   export type UpdateResult = PlasmidWithRelations;
 
-  // Delete plasmid
-  export const deleteSchema = z.object({
-    id: z.number(),
-  });
+  export const deleteSchema = z.object({ id: z.number() });
   export type DeleteParams = z.infer<typeof deleteSchema>;
   export type DeleteResult = { id: number };
 
-  // Duplicate plasmid
   export const duplicateSchema = z.object({
     id: z.number(),
     includeGmos: z.boolean().default(false),
@@ -571,7 +579,6 @@ export namespace PlasmidsIPC {
   export type DuplicateParams = z.infer<typeof duplicateSchema>;
   export type DuplicateResult = PlasmidWithRelations;
 
-  // Upload plasmid to external service
   export const uploadSchema = z.object({
     id: z.number(),
     targets: z.array(z.enum(['ice', 'gdrive', 'filebrowser'])),
@@ -587,7 +594,6 @@ export namespace PlasmidsIPC {
 // ========== FEATURES ==========
 
 export namespace FeaturesIPC {
-  // List features
   export const listSchema = z.object({
     searchTerm: z.string().optional(),
     risk: z.enum(['none', 'low', 'medium', 'high']).optional(),
@@ -595,43 +601,28 @@ export namespace FeaturesIPC {
   export type ListParams = z.infer<typeof listSchema>;
   export type ListResult = Feature[];
 
-  // Create feature
   export const createSchema = z.object({
     annotation: z.string().min(1),
     alias: z.string().optional(),
     risk: z.enum(['none', 'low', 'medium', 'high']),
     organism: z.string(),
-    uid: z.string().optional(), // Generated if not provided
+    uid: z.string().optional(),
   });
   export type CreateParams = z.infer<typeof createSchema>;
   export type CreateResult = Feature;
 
-  // Update feature
-  export const updateSchema = createSchema.extend({
-    id: z.number(),
-  });
+  export const updateSchema = createSchema.extend({ id: z.number() });
   export type UpdateParams = z.infer<typeof updateSchema>;
   export type UpdateResult = Feature;
 
-  // Delete feature
-  export const deleteSchema = z.object({
-    id: z.number(),
-  });
+  export const deleteSchema = z.object({ id: z.number() });
   export type DeleteParams = z.infer<typeof deleteSchema>;
   export type DeleteResult = { id: number };
 
-  // Import from Excel
-  export const importExcelSchema = z.object({
-    filePath: z.string(),
-  });
+  export const importExcelSchema = z.object({ filePath: z.string() });
   export type ImportExcelParams = z.infer<typeof importExcelSchema>;
-  export type ImportExcelResult = {
-    imported: number;
-    skipped: number;
-    errors: string[];
-  };
+  export type ImportExcelResult = { imported: number; skipped: number; errors: string[] };
 
-  // Export to Excel
   export const exportExcelSchema = z.object({
     filePath: z.string(),
     includeUnused: z.boolean().default(false),
@@ -639,7 +630,6 @@ export namespace FeaturesIPC {
   export type ExportExcelParams = z.infer<typeof exportExcelSchema>;
   export type ExportExcelResult = { filePath: string };
 
-  // Sync with Google Sheets
   export const syncSheetsSchema = z.object({
     direction: z.enum(['download', 'upload', 'both']),
   });
@@ -655,21 +645,16 @@ export namespace FeaturesIPC {
 // ========== ORGANISMS ==========
 
 export namespace OrganismsIPC {
-  // Similar structure to Features...
-  // (Omitted for brevity - follow same pattern)
+  // Follow same pattern as FeaturesIPC
 }
 
 // ========== GMOS ==========
 
 export namespace GMOsIPC {
-  // List GMOs
-  export const listSchema = z.object({
-    plasmidId: z.number().optional(),
-  });
+  export const listSchema = z.object({ plasmidId: z.number().optional() });
   export type ListParams = z.infer<typeof listSchema>;
   export type ListResult = GMO[];
 
-  // Generate Formblatt-Z report
   export const generateReportSchema = z.object({
     filePath: z.string(),
     language: z.enum(['de', 'en']).default('de'),
@@ -681,7 +666,6 @@ export namespace GMOsIPC {
 // ========== FILES ==========
 
 export namespace FilesIPC {
-  // Upload attachment
   export const uploadAttachmentSchema = z.object({
     plasmidId: z.number(),
     filePath: z.string(),
@@ -689,7 +673,6 @@ export namespace FilesIPC {
   export type UploadAttachmentParams = z.infer<typeof uploadAttachmentSchema>;
   export type UploadAttachmentResult = Attachment;
 
-  // Download attachment
   export const downloadAttachmentSchema = z.object({
     attachmentId: z.number(),
     savePath: z.string(),
@@ -697,15 +680,6 @@ export namespace FilesIPC {
   export type DownloadAttachmentParams = z.infer<typeof downloadAttachmentSchema>;
   export type DownloadAttachmentResult = { filePath: string };
 
-  // Upload GenBank file
-  export const uploadGenbankSchema = z.object({
-    plasmidId: z.number(),
-    filePath: z.string(),
-  });
-  export type UploadGenbankParams = z.infer<typeof uploadGenbankSchema>;
-  export type UploadGenbankResult = { plasmidId: number; gbName: string };
-
-  // Open file dialog
   export const openFileDialogSchema = z.object({
     title: z.string().optional(),
     filters: z.array(z.object({
@@ -721,10 +695,8 @@ export namespace FilesIPC {
 // ========== SETTINGS ==========
 
 export namespace SettingsIPC {
-  // Get settings
   export type GetResult = Settings;
 
-  // Update settings
   export const updateSchema = z.object({
     initials: z.string().optional(),
     institutionName: z.string().optional(),
@@ -747,16 +719,10 @@ export namespace SettingsIPC {
 // ========== APP ==========
 
 export namespace AppIPC {
-  // Get app version
   export type GetVersionResult = { version: string };
-
-  // Get user data path
   export type GetUserDataPathResult = { path: string };
 
-  // Open external URL
-  export const openExternalSchema = z.object({
-    url: z.string().url(),
-  });
+  export const openExternalSchema = z.object({ url: z.string().url() });
   export type OpenExternalParams = z.infer<typeof openExternalSchema>;
   export type OpenExternalResult = { success: boolean };
 }
@@ -771,7 +737,6 @@ import { ipcMain } from 'electron';
 import { z } from 'zod';
 import type { IPCResponse } from '../types/ipc';
 
-// Generic handler wrapper with validation & error handling
 export function registerHandler<I, O>(
   channel: string,
   schema: z.ZodSchema<I>,
@@ -779,44 +744,20 @@ export function registerHandler<I, O>(
 ) {
   ipcMain.handle(channel, async (event, input: unknown): Promise<IPCResponse<O>> => {
     try {
-      // Validate input
       const validatedInput = schema.parse(input);
-      
-      // Execute handler
       const result = await handler(validatedInput);
-      
-      return {
-        success: true,
-        data: result,
-      };
+      return { success: true, data: result };
     } catch (error) {
       console.error(`IPC handler error [${channel}]:`, error);
-      
       if (error instanceof z.ZodError) {
-        return {
-          success: false,
-          error: {
-            message: 'Validation error',
-            code: 'VALIDATION_ERROR',
-            details: error.errors,
-          },
-        };
+        return { success: false, error: { message: 'Validation error', code: 'VALIDATION_ERROR', details: error.errors } };
       }
-      
-      return {
-        success: false,
-        error: {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          code: 'INTERNAL_ERROR',
-        },
-      };
+      return { success: false, error: { message: error instanceof Error ? error.message : 'Unknown error', code: 'INTERNAL_ERROR' } };
     }
   });
 }
 
-// Register all handlers
 export function registerAllHandlers() {
-  // Plasmids
   registerHandler('plasmids:list', PlasmidsIPC.listSchema, handleListPlasmids);
   registerHandler('plasmids:getById', PlasmidsIPC.getByIdSchema, handleGetPlasmidById);
   registerHandler('plasmids:create', PlasmidsIPC.createSchema, handleCreatePlasmid);
@@ -824,13 +765,9 @@ export function registerAllHandlers() {
   registerHandler('plasmids:delete', PlasmidsIPC.deleteSchema, handleDeletePlasmid);
   registerHandler('plasmids:duplicate', PlasmidsIPC.duplicateSchema, handleDuplicatePlasmid);
   registerHandler('plasmids:upload', PlasmidsIPC.uploadSchema, handleUploadPlasmid);
-  
-  // Features
   registerHandler('features:list', FeaturesIPC.listSchema, handleListFeatures);
   registerHandler('features:create', FeaturesIPC.createSchema, handleCreateFeature);
   // ... etc
-  
-  // Continue for all namespaces
 }
 ```
 
@@ -842,14 +779,11 @@ export function registerAllHandlers() {
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IPCResponse } from '../main/types/ipc';
 
-// Type-safe IPC invoke wrapper
 function createIPCInvoker() {
   return {
     invoke: async <T>(channel: string, data?: unknown): Promise<IPCResponse<T>> => {
       return ipcRenderer.invoke(channel, data);
     },
-    
-    // For event listeners (future use)
     on: (channel: string, callback: (...args: unknown[]) => void) => {
       const subscription = (_event: unknown, ...args: unknown[]) => callback(...args);
       ipcRenderer.on(channel, subscription);
@@ -858,97 +792,8 @@ function createIPCInvoker() {
   };
 }
 
-// Expose to renderer via contextBridge
 contextBridge.exposeInMainWorld('api', createIPCInvoker());
-
-// Type declarations
 export type IPCClient = ReturnType<typeof createIPCInvoker>;
-```
-
-```typescript
-// src/preload/types.d.ts
-
-import type { IPCClient } from './index';
-
-declare global {
-  interface Window {
-    api: IPCClient;
-  }
-}
-```
-
-### Renderer IPC Client
-
-```typescript
-// src/renderer/src/lib/ipc-client.ts
-
-import type { IPCResponse } from '@/../../main/types/ipc';
-
-export class IPCError extends Error {
-  constructor(
-    message: string,
-    public code?: string,
-    public details?: unknown
-  ) {
-    super(message);
-    this.name = 'IPCError';
-  }
-}
-
-// Type-safe IPC client
-export async function ipcInvoke<T>(
-  channel: string,
-  data?: unknown
-): Promise<T> {
-  const response = await window.api.invoke<T>(channel, data);
-  
-  if (!response.success) {
-    throw new IPCError(
-      response.error?.message || 'IPC call failed',
-      response.error?.code,
-      response.error?.details
-    );
-  }
-  
-  return response.data!;
-}
-
-// Convenience wrappers for each namespace
-
-export const plasmidsAPI = {
-  list: (params: PlasmidsIPC.ListParams) =>
-    ipcInvoke<PlasmidsIPC.ListResult>('plasmids:list', params),
-    
-  getById: (params: PlasmidsIPC.GetByIdParams) =>
-    ipcInvoke<PlasmidsIPC.GetByIdResult>('plasmids:getById', params),
-    
-  create: (params: PlasmidsIPC.CreateParams) =>
-    ipcInvoke<PlasmidsIPC.CreateResult>('plasmids:create', params),
-    
-  update: (params: PlasmidsIPC.UpdateParams) =>
-    ipcInvoke<PlasmidsIPC.UpdateResult>('plasmids:update', params),
-    
-  delete: (params: PlasmidsIPC.DeleteParams) =>
-    ipcInvoke<PlasmidsIPC.DeleteResult>('plasmids:delete', params),
-    
-  duplicate: (params: PlasmidsIPC.DuplicateParams) =>
-    ipcInvoke<PlasmidsIPC.DuplicateResult>('plasmids:duplicate', params),
-    
-  upload: (params: PlasmidsIPC.UploadParams) =>
-    ipcInvoke<PlasmidsIPC.UploadResult>('plasmids:upload', params),
-};
-
-export const featuresAPI = {
-  list: (params?: FeaturesIPC.ListParams) =>
-    ipcInvoke<FeaturesIPC.ListResult>('features:list', params),
-    
-  create: (params: FeaturesIPC.CreateParams) =>
-    ipcInvoke<FeaturesIPC.CreateResult>('features:create', params),
-    
-  // ... etc
-};
-
-// Continue for all namespaces
 ```
 
 ---
@@ -959,29 +804,31 @@ export const featuresAPI = {
 
 ```
 ┌─────────────────────────────────────────────┐
-│         Layer 1: React Query                │  
-│   (Server/Database State + Caching)        │
+│         Layer 1: SQLite (via React Query)   │
+│   (Persistent State — single source of truth)│
 │                                             │
 │  - Plasmids, Features, Organisms, GMOs     │
-│  - Automatic background refetching         │
-│  - Optimistic updates                      │
-│  - Cache invalidation                      │
+│  - Settings (theme, layout, font size, …)  │
+│  - Manual cache invalidation on mutation   │
+│  - staleTime: 30s (short, DB is local)     │
 └─────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────┐
 │         Layer 2: Zustand                    │
-│   (Client/UI State)                         │
+│   (Transient UI State — never persisted)    │
 │                                             │
 │  - Current tab/view                         │
 │  - Selected plasmid/feature/organism ID     │
 │  - Table filters & sort state               │
-│  - UI preferences (theme, layout)           │
 │  - Modal open/close state                   │
+│                                             │
+│  ⚠ Zustand does NOT own theme, layout,     │
+│    or font size. Read those from SQLite.    │
 └─────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────┐
 │         Layer 3: React Hook Form            │
-│   (Form State - Ephemeral)                  │
+│   (Form State — ephemeral)                  │
 │                                             │
 │  - Form field values                        │
 │  - Validation errors                        │
@@ -1000,68 +847,54 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Refetch on window focus (user returns to app)
-      refetchOnWindowFocus: true,
-      
-      // Don't refetch on mount if data is fresh
-      refetchOnMount: false,
-      
-      // Cache time: 5 minutes
-      staleTime: 5 * 60 * 1000,
-      
+      // Short staleTime — DB is local so fetches are cheap.
+      // Primary freshness mechanism is manual invalidateQueries() after mutations.
+      staleTime: 30 * 1000, // 30 seconds
+
       // Garbage collection: 10 minutes
       gcTime: 10 * 60 * 1000,
-      
-      // Retry failed queries
-      retry: 1,
-      
-      // Don't refetch on network reconnect (local DB)
+
+      // Refetch when user returns to the window (catches external DB changes)
+      refetchOnWindowFocus: true,
+
+      // Don't refetch on mount if data is within staleTime
+      refetchOnMount: false,
+
+      // No network reconnect refetch (local DB only)
       refetchOnReconnect: false,
+
+      retry: 1,
     },
     mutations: {
-      // Retry failed mutations once
       retry: 1,
     },
   },
 });
 
-// Query keys factory for consistency
+// Query keys factory
 export const queryKeys = {
-  // Plasmids
   plasmids: {
     all: ['plasmids'] as const,
     lists: () => [...queryKeys.plasmids.all, 'list'] as const,
-    list: (filters: PlasmidsIPC.ListParams) =>
-      [...queryKeys.plasmids.lists(), filters] as const,
+    list: (filters: PlasmidsIPC.ListParams) => [...queryKeys.plasmids.lists(), filters] as const,
     details: () => [...queryKeys.plasmids.all, 'detail'] as const,
     detail: (id: number) => [...queryKeys.plasmids.details(), id] as const,
   },
-  
-  // Features
   features: {
     all: ['features'] as const,
     lists: () => [...queryKeys.features.all, 'list'] as const,
-    list: (filters?: FeaturesIPC.ListParams) =>
-      [...queryKeys.features.lists(), filters] as const,
+    list: (filters?: FeaturesIPC.ListParams) => [...queryKeys.features.lists(), filters] as const,
   },
-  
-  // Organisms
   organisms: {
     all: ['organisms'] as const,
     lists: () => [...queryKeys.organisms.all, 'list'] as const,
-    list: (filters?: OrganismsIPC.ListParams) =>
-      [...queryKeys.organisms.lists(), filters] as const,
+    list: (filters?: OrganismsIPC.ListParams) => [...queryKeys.organisms.lists(), filters] as const,
   },
-  
-  // GMOs
   gmos: {
     all: ['gmos'] as const,
     lists: () => [...queryKeys.gmos.all, 'list'] as const,
-    list: (filters?: GMOsIPC.ListParams) =>
-      [...queryKeys.gmos.lists(), filters] as const,
+    list: (filters?: GMOsIPC.ListParams) => [...queryKeys.gmos.lists(), filters] as const,
   },
-  
-  // Settings
   settings: ['settings'] as const,
 };
 ```
@@ -1074,9 +907,7 @@ export const queryKeys = {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { plasmidsAPI } from '@/lib/ipc-client';
 import { queryKeys } from '@/lib/query-client';
-import type { PlasmidsIPC } from '@/../../main/types/ipc';
 
-// List plasmids
 export function usePlasmids(params: PlasmidsIPC.ListParams) {
   return useQuery({
     queryKey: queryKeys.plasmids.list(params),
@@ -1084,103 +915,53 @@ export function usePlasmids(params: PlasmidsIPC.ListParams) {
   });
 }
 
-// Get single plasmid
 export function usePlasmid(id: number, include?: PlasmidsIPC.GetByIdParams['include']) {
   return useQuery({
     queryKey: queryKeys.plasmids.detail(id),
     queryFn: () => plasmidsAPI.getById({ id, include }),
-    enabled: !!id, // Only fetch if ID is provided
+    enabled: !!id,
   });
 }
 
-// Create plasmid mutation
 export function useCreatePlasmid() {
   const queryClient = useQueryClient();
-  
   return useMutation({
     mutationFn: plasmidsAPI.create,
     onSuccess: () => {
-      // Invalidate all plasmid lists to trigger refetch
       queryClient.invalidateQueries({ queryKey: queryKeys.plasmids.lists() });
     },
   });
 }
 
-// Update plasmid mutation
 export function useUpdatePlasmid() {
   const queryClient = useQueryClient();
-  
   return useMutation({
     mutationFn: plasmidsAPI.update,
     onMutate: async (updatedPlasmid) => {
-      // Optimistic update: cancel ongoing queries
-      await queryClient.cancelQueries({
-        queryKey: queryKeys.plasmids.detail(updatedPlasmid.id),
-      });
-      
-      // Snapshot previous value
-      const previousPlasmid = queryClient.getQueryData(
-        queryKeys.plasmids.detail(updatedPlasmid.id)
-      );
-      
-      // Optimistically update cache
-      queryClient.setQueryData(
-        queryKeys.plasmids.detail(updatedPlasmid.id),
-        updatedPlasmid
-      );
-      
+      await queryClient.cancelQueries({ queryKey: queryKeys.plasmids.detail(updatedPlasmid.id) });
+      const previousPlasmid = queryClient.getQueryData(queryKeys.plasmids.detail(updatedPlasmid.id));
+      queryClient.setQueryData(queryKeys.plasmids.detail(updatedPlasmid.id), updatedPlasmid);
       return { previousPlasmid };
     },
     onError: (err, updatedPlasmid, context) => {
-      // Rollback on error
       if (context?.previousPlasmid) {
-        queryClient.setQueryData(
-          queryKeys.plasmids.detail(updatedPlasmid.id),
-          context.previousPlasmid
-        );
+        queryClient.setQueryData(queryKeys.plasmids.detail(updatedPlasmid.id), context.previousPlasmid);
       }
     },
     onSettled: (data, error, variables) => {
-      // Refetch after mutation (success or error)
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.plasmids.detail(variables.id),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.plasmids.lists(),
-      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plasmids.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plasmids.lists() });
     },
   });
 }
 
-// Delete plasmid mutation
 export function useDeletePlasmid() {
   const queryClient = useQueryClient();
-  
   return useMutation({
     mutationFn: plasmidsAPI.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plasmids.all });
     },
-  });
-}
-
-// Duplicate plasmid mutation
-export function useDuplicatePlasmid() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: plasmidsAPI.duplicate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plasmids.lists() });
-    },
-  });
-}
-
-// Upload plasmid mutation
-export function useUploadPlasmid() {
-  return useMutation({
-    mutationFn: plasmidsAPI.upload,
-    // No cache invalidation needed (doesn't change DB)
   });
 }
 ```
@@ -1189,62 +970,23 @@ export function useUploadPlasmid() {
 
 ```typescript
 // src/renderer/src/store/ui.ts
+// Transient UI state only — no settings, no theme, no layout.
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 interface UIState {
-  // Current view
   currentView: 'plasmids' | 'features' | 'organisms' | 'gmos' | 'settings';
   setCurrentView: (view: UIState['currentView']) => void;
-  
-  // Theme
-  theme: 'light' | 'dark';
-  setTheme: (theme: UIState['theme']) => void;
-  
-  // Layout
-  layoutMode: 'vertical' | 'horizontal';
-  setLayoutMode: (mode: UIState['layoutMode']) => void;
-  
-  // Font size
-  fontSize: number;
-  setFontSize: (size: number) => void;
-  
-  // Sidebar collapsed
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 }
 
-export const useUIStore = create<UIState>()(
-  persist(
-    (set) => ({
-      currentView: 'plasmids',
-      setCurrentView: (view) => set({ currentView: view }),
-      
-      theme: 'light',
-      setTheme: (theme) => set({ theme }),
-      
-      layoutMode: 'vertical',
-      setLayoutMode: (mode) => set({ layoutMode: mode }),
-      
-      fontSize: 14,
-      setFontSize: (size) => set({ fontSize: size }),
-      
-      sidebarCollapsed: false,
-      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-    }),
-    {
-      name: 'gmocu-ui-state', // localStorage key
-      partialize: (state) => ({
-        // Only persist these fields
-        theme: state.theme,
-        layoutMode: state.layoutMode,
-        fontSize: state.fontSize,
-        sidebarCollapsed: state.sidebarCollapsed,
-      }),
-    }
-  )
-);
+export const useUIStore = create<UIState>((set) => ({
+  currentView: 'plasmids',
+  setCurrentView: (view) => set({ currentView: view }),
+  sidebarCollapsed: false,
+  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+}));
 ```
 
 ```typescript
@@ -1253,19 +995,14 @@ export const useUIStore = create<UIState>()(
 import { create } from 'zustand';
 
 interface SelectionState {
-  // Selected IDs
   selectedPlasmidId: number | null;
   selectedFeatureId: number | null;
   selectedOrganismId: number | null;
   selectedGMOId: number | null;
-  
-  // Setters
   setSelectedPlasmidId: (id: number | null) => void;
   setSelectedFeatureId: (id: number | null) => void;
   setSelectedOrganismId: (id: number | null) => void;
   setSelectedGMOId: (id: number | null) => void;
-  
-  // Clear all selections
   clearSelections: () => void;
 }
 
@@ -1274,18 +1011,11 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   selectedFeatureId: null,
   selectedOrganismId: null,
   selectedGMOId: null,
-  
   setSelectedPlasmidId: (id) => set({ selectedPlasmidId: id }),
   setSelectedFeatureId: (id) => set({ selectedFeatureId: id }),
   setSelectedOrganismId: (id) => set({ selectedOrganismId: id }),
   setSelectedGMOId: (id) => set({ selectedGMOId: id }),
-  
-  clearSelections: () => set({
-    selectedPlasmidId: null,
-    selectedFeatureId: null,
-    selectedOrganismId: null,
-    selectedGMOId: null,
-  }),
+  clearSelections: () => set({ selectedPlasmidId: null, selectedFeatureId: null, selectedOrganismId: null, selectedGMOId: null }),
 }));
 ```
 
@@ -1299,7 +1029,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
 App
 ├── AppShell (Mantine)
 │   ├── Header
-│   │   ├── Logo
+│   │   ├── Logo (JLab)
 │   │   ├── ViewSwitcher (Tabs)
 │   │   └── UserMenu
 │   │       └── ThemeToggle
@@ -1311,150 +1041,32 @@ App
 │   └── Main Content Area
 │       ├── PlasmidsView
 │       │   ├── PlasmidTable
-│       │   │   └── PlasmidRow
 │       │   ├── PlasmidForm
 │       │   │   ├── BasicInfoSection
 │       │   │   ├── CassettesSection
-│       │   │   │   └── CassetteInput (Autocomplete)
 │       │   │   ├── GMOsSection
-│       │   │   │   └── GMOList
 │       │   │   ├── GenbankSection
-│       │   │   │   └── FileUpload
 │       │   │   └── AttachmentsSection
-│       │   │       └── AttachmentList
 │       │   └── ActionBar
-│       │       ├── SaveButton
-│       │       ├── DeleteButton
-│       │       ├── DuplicateButton
-│       │       └── UploadButton
 │       │
 │       ├── FeaturesView
 │       │   ├── FeatureTable
 │       │   ├── FeatureForm
-│       │   └── ActionBar
-│       │       ├── ImportExcelButton
-│       │       ├── ExportExcelButton
-│       │       └── SyncSheetsButton
+│       │   └── ActionBar (Import/Export/Sync)
 │       │
 │       ├── OrganismsView
-│       │   ├── OrganismTable
-│       │   ├── OrganismForm
-│       │   └── ActionBar
-│       │
 │       ├── GMOsView
-│       │   ├── GMOTable
-│       │   ├── GMOFilters
-│       │   └── ActionBar
-│       │       └── GenerateReportButton
-│       │
+│       │   └── ActionBar (GenerateReportButton)
 │       └── SettingsView
 │           ├── GeneralSettings
 │           ├── InstitutionSettings
 │           ├── IntegrationSettings
-│           │   ├── IceCredentialsForm
-│           │   ├── GoogleCredentialsForm
-│           │   └── FilebrowserCredentialsForm
 │           └── AppearanceSettings
 │
 └── GlobalModals
     ├── ConfirmDialog
     ├── ErrorModal
     └── ProgressModal
-```
-
-### Reusable Component Patterns
-
-```typescript
-// src/renderer/src/components/tables/PlasmidTable.tsx
-
-import { useMemo } from 'react';
-import { Table } from '@mantine/core';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-} from '@tanstack/react-table';
-import type { Plasmid } from '@/types/domain';
-
-interface PlasmidTableProps {
-  data: Plasmid[];
-  onRowClick?: (plasmid: Plasmid) => void;
-  selectedId?: number | null;
-}
-
-export function PlasmidTable({ data, onRowClick, selectedId }: PlasmidTableProps) {
-  const columns = useMemo(() => [
-    {
-      accessorKey: 'id',
-      header: 'ID',
-      size: 60,
-    },
-    {
-      accessorKey: 'name',
-      header: 'Name',
-      size: 120,
-    },
-    {
-      accessorKey: 'alias',
-      header: 'Alias',
-      size: 200,
-    },
-    {
-      accessorKey: 'statusValue',
-      header: 'Status',
-      size: 100,
-    },
-    {
-      accessorKey: 'targetRg',
-      header: 'RG',
-      size: 50,
-    },
-  ], []);
-  
-  const table = useReactTable({
-    data,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
-  
-  return (
-    <Table highlightOnHover>
-      <Table.Thead>
-        {table.getHeaderGroups().map(headerGroup => (
-          <Table.Tr key={headerGroup.id}>
-            {headerGroup.headers.map(header => (
-              <Table.Th key={header.id} style={{ width: header.getSize() }}>
-                {flexRender(header.column.columnDef.header, header.getContext())}
-              </Table.Th>
-            ))}
-          </Table.Tr>
-        ))}
-      </Table.Thead>
-      <Table.Tbody>
-        {table.getRowModel().rows.map(row => (
-          <Table.Tr
-            key={row.id}
-            onClick={() => onRowClick?.(row.original)}
-            style={{
-              cursor: onRowClick ? 'pointer' : 'default',
-              backgroundColor: row.original.id === selectedId ? 'var(--mantine-color-blue-light)' : undefined,
-            }}
-          >
-            {row.getVisibleCells().map(cell => (
-              <Table.Td key={cell.id}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </Table.Td>
-            ))}
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
-  );
-}
 ```
 
 ---
@@ -1472,28 +1084,52 @@ export function PlasmidTable({ data, onRowClick, selectedId }: PlasmidTableProps
 │  │                                                     │ │
 │  │  ┌───────────────┐  ┌──────────────┐              │ │
 │  │  │  IceClient    │  │ GoogleClient │              │ │
-│  │  │               │  │              │              │ │
-│  │  │ - auth()      │  │ - sheets()   │              │ │
-│  │  │ - upload()    │  │ - drive()    │              │ │
-│  │  │ - update()    │  │ - sync()     │              │ │
 │  │  └───────┬───────┘  └──────┬───────┘              │ │
 │  │          │                  │                      │ │
 │  │  ┌───────▼──────────────────▼───────┐             │ │
 │  │  │    Credential Storage             │             │ │
-│  │  │  (Encrypted in SQLite)            │             │ │
+│  │  │  (safeStorage encrypted in SQLite)│             │ │
 │  │  └───────────────────────────────────┘             │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │          IPC Handlers (sync.ts)                    │ │
-│  │                                                     │ │
-│  │  - sync:ice:upload                                 │ │
-│  │  - sync:sheets:download                            │ │
-│  │  - sync:sheets:upload                              │ │
-│  │  - sync:drive:upload                               │ │
 │  └────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
+
+### Credential Security
+
+```typescript
+// src/main/utils/encryption.ts
+// Uses Electron's native safeStorage API — OS keychain-backed encryption.
+// This replaces any deterministic key-based approach and is the baseline from day one.
+
+import { safeStorage } from 'electron';
+
+export function encrypt(text: string): Buffer {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('safeStorage encryption is not available on this system');
+  }
+  return safeStorage.encryptString(text);
+}
+
+export function decrypt(encrypted: Buffer): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('safeStorage encryption is not available on this system');
+  }
+  return safeStorage.decryptString(encrypted);
+}
+
+// Store encrypted bytes as base64 in SQLite text columns
+export function encryptToBase64(text: string): string {
+  return encrypt(text).toString('base64');
+}
+
+export function decryptFromBase64(base64: string): string {
+  return decrypt(Buffer.from(base64, 'base64'));
+}
+```
+
+> **Decision**: `safeStorage` is used from the start — not deferred. Credentials (ice_token,
+> filebrowser_password, service_account_json) are encrypted before writing to SQLite and decrypted
+> on read. Encrypted bytes are stored as base64 strings in TEXT columns.
 
 ### JBEI/ice Integration
 
@@ -1503,26 +1139,13 @@ export function PlasmidTable({ data, onRowClick, selectedId }: PlasmidTableProps
 import axios, { AxiosInstance } from 'axios';
 
 export interface IceConfig {
-  instance: string; // URL
-  token: string; // API token
-}
-
-export interface IcePlasmidEntry {
-  name: string;
-  shortDescription?: string;
-  longDescription?: string;
-  status: 'Complete' | 'In Progress' | 'Planned';
-  partType: 'PLASMID';
-  creator: string; // Initials
-  creatorEmail?: string;
-  principalInvestigator?: string;
-  bioSafetyLevel?: number;
-  customFields?: Record<string, string>;
+  instance: string;
+  token: string;
 }
 
 export class IceClient {
   private client: AxiosInstance;
-  
+
   constructor(private config: IceConfig) {
     this.client = axios.create({
       baseURL: config.instance,
@@ -1532,7 +1155,7 @@ export class IceClient {
       },
     });
   }
-  
+
   async testConnection(): Promise<boolean> {
     try {
       await this.client.get('/rest/accesstokens');
@@ -1541,67 +1164,37 @@ export class IceClient {
       return false;
     }
   }
-  
-  async uploadPlasmid(
-    entry: IcePlasmidEntry,
-    genbankFile?: string
-  ): Promise<{ id: string; recordId: string; url: string }> {
-    // Create entry
+
+  async uploadPlasmid(entry: any, genbankFile?: string): Promise<{ id: string; url: string }> {
     const response = await this.client.post('/rest/parts', entry);
-    const { id, recordId } = response.data;
-    
-    // Upload genbank file if provided
+    const { id } = response.data;
+
     if (genbankFile) {
       const formData = new FormData();
       formData.append('file', new Blob([genbankFile]), 'plasmid.gb');
-      
-      await this.client.post(
-        `/rest/file/sequence/${id}`,
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }
-      );
+      await this.client.post(`/rest/file/sequence/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
     }
-    
-    return {
-      id,
-      recordId,
-      url: `${this.config.instance}/entry/${id}`,
-    };
-  }
-  
-  async updatePlasmid(id: string, entry: Partial<IcePlasmidEntry>): Promise<void> {
-    await this.client.put(`/rest/parts/${id}`, entry);
-  }
-  
-  async getEntry(id: string): Promise<any> {
-    const response = await this.client.get(`/rest/parts/${id}`);
-    return response.data;
+
+    return { id, url: `${this.config.instance}/entry/${id}` };
   }
 }
 ```
 
-### Google Sheets Integration
+### Google Sheets / Drive Integration
 
 ```typescript
 // src/main/services/google.ts
 
 import { google } from 'googleapis';
-import type { JSONClient } from 'google-auth-library/build/src/auth/googleauth';
-
-export interface GoogleConfig {
-  serviceAccountKey: any; // JSON key file
-  sheetsId?: string;
-  driveFolderId?: string;
-}
 
 export class GoogleClient {
-  private auth: JSONClient;
-  private sheets: ReturnType<typeof google.sheets>;
-  private drive: ReturnType<typeof google.drive>;
-  
-  constructor(private config: GoogleConfig) {
+  private auth: any;
+  private sheets: any;
+  private drive: any;
+
+  constructor(private config: { serviceAccountKey: any; sheetsId?: string; driveFolderId?: string }) {
     this.auth = new google.auth.JWT({
       email: config.serviceAccountKey.client_email,
       key: config.serviceAccountKey.private_key,
@@ -1610,11 +1203,10 @@ export class GoogleClient {
         'https://www.googleapis.com/auth/drive.file',
       ],
     });
-    
     this.sheets = google.sheets({ version: 'v4', auth: this.auth });
     this.drive = google.drive({ version: 'v3', auth: this.auth });
   }
-  
+
   async testConnection(): Promise<boolean> {
     try {
       await this.auth.authorize();
@@ -1623,169 +1215,18 @@ export class GoogleClient {
       return false;
     }
   }
-  
-  // ========== SHEETS ==========
-  
+
   async getFeaturesFromSheet(): Promise<any[]> {
     if (!this.config.sheetsId) throw new Error('Sheets ID not configured');
-    
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.config.sheetsId,
-      range: 'features!A2:F', // Assuming header in row 1
+      range: 'features!A2:F',
     });
-    
-    return response.data.values?.map(row => ({
-      annotation: row[0],
-      alias: row[1],
-      risk: row[2],
-      organism: row[3],
-      uid: row[4],
-      valid: row[5] === '1',
+    return response.data.values?.map((row: string[]) => ({
+      annotation: row[0], alias: row[1], risk: row[2],
+      organism: row[3], uid: row[4], valid: row[5] === '1',
     })) || [];
   }
-  
-  async updateFeaturesInSheet(features: any[]): Promise<void> {
-    if (!this.config.sheetsId) throw new Error('Sheets ID not configured');
-    
-    const values = features.map(f => [
-      f.annotation,
-      f.alias || '',
-      f.risk,
-      f.organism,
-      f.uid,
-      '1', // valid flag
-    ]);
-    
-    await this.sheets.spreadsheets.values.append({
-      spreadsheetId: this.config.sheetsId,
-      range: 'features!A:F',
-      valueInputOption: 'RAW',
-      requestBody: { values },
-    });
-  }
-  
-  async logToSheet(entityType: string, action: string, count: number): Promise<void> {
-    if (!this.config.sheetsId) throw new Error('Sheets ID not configured');
-    
-    const timestamp = new Date().toISOString();
-    const values = [[timestamp, entityType, action, count]];
-    
-    await this.sheets.spreadsheets.values.append({
-      spreadsheetId: this.config.sheetsId,
-      range: 'logging!A:D',
-      valueInputOption: 'RAW',
-      requestBody: { values },
-    });
-  }
-  
-  // ========== DRIVE ==========
-  
-  async uploadFileToDrive(
-    fileName: string,
-    fileContent: Buffer | string,
-    mimeType: string,
-    folderPath?: string[]
-  ): Promise<string> {
-    if (!this.config.driveFolderId) throw new Error('Drive folder ID not configured');
-    
-    // Create folder structure if needed
-    let parentId = this.config.driveFolderId;
-    if (folderPath) {
-      for (const folderName of folderPath) {
-        parentId = await this.getOrCreateFolder(folderName, parentId);
-      }
-    }
-    
-    // Upload file
-    const response = await this.drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [parentId],
-      },
-      media: {
-        mimeType,
-        body: typeof fileContent === 'string' ? fileContent : Buffer.from(fileContent),
-      },
-    });
-    
-    return response.data.id!;
-  }
-  
-  private async getOrCreateFolder(name: string, parentId: string): Promise<string> {
-    // Search for existing folder
-    const search = await this.drive.files.list({
-      q: `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id)',
-    });
-    
-    if (search.data.files?.length) {
-      return search.data.files[0].id!;
-    }
-    
-    // Create folder
-    const response = await this.drive.files.create({
-      requestBody: {
-        name,
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [parentId],
-      },
-      fields: 'id',
-    });
-    
-    return response.data.id!;
-  }
-}
-```
-
-### Credential Security
-
-```typescript
-// src/main/utils/encryption.ts
-
-import crypto from 'crypto';
-import { app } from 'electron';
-
-// Use machine-specific key (basic encryption for local storage)
-// For production: consider using safeStorage API
-const ALGORITHM = 'aes-256-gcm';
-const KEY_LENGTH = 32;
-const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
-
-function getEncryptionKey(): Buffer {
-  // Derive key from machine ID + app name
-  const machineId = app.getName() + app.getVersion();
-  return crypto.scryptSync(machineId, 'salt', KEY_LENGTH);
-}
-
-export function encrypt(text: string): string {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  const tag = cipher.getAuthTag();
-  
-  // Return: iv + tag + encrypted (all hex-encoded)
-  return iv.toString('hex') + tag.toString('hex') + encrypted;
-}
-
-export function decrypt(encrypted: string): string {
-  const key = getEncryptionKey();
-  
-  const iv = Buffer.from(encrypted.slice(0, IV_LENGTH * 2), 'hex');
-  const tag = Buffer.from(encrypted.slice(IV_LENGTH * 2, (IV_LENGTH + TAG_LENGTH) * 2), 'hex');
-  const ciphertext = encrypted.slice((IV_LENGTH + TAG_LENGTH) * 2);
-  
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  
-  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
 }
 ```
 
@@ -1796,58 +1237,29 @@ export function decrypt(encrypted: string): string {
 ### Threat Model
 
 1. **Local Data Access**: Database file readable if user has file system access → Acceptable (single-user desktop app)
-2. **API Credentials**: Stored encrypted in database
-3. **IPC Injection**: Prevented by input validation (Zod schemas)
+2. **API Credentials**: Encrypted via `safeStorage` (OS keychain) before storage in SQLite
+3. **IPC Injection**: Prevented by Zod input validation on all handlers
 4. **XSS**: Mitigated by React's automatic escaping + CSP
 5. **Dependency Vulnerabilities**: Managed via `npm audit` + updates
 
 ### Security Checklist
 
 ```typescript
-// electron.vite.config.ts
-export default {
-  main: {
-    // ...
-  },
-  preload: {
-    // ...
-  },
-  renderer: {
-    // ...
-    plugins: [
-      // Content Security Policy
-      viteCsp({
-        policy: {
-          'default-src': ["'self'"],
-          'script-src': ["'self'"],
-          'style-src': ["'self'", "'unsafe-inline'"], // Mantine requires inline styles
-          'img-src': ["'self'", 'data:', 'https:'],
-          'connect-src': ["'self'"],
-        },
-      }),
-    ],
-  },
-};
-
-// src/main/index.ts - BrowserWindow config
+// src/main/index.ts — BrowserWindow config
 const mainWindow = new BrowserWindow({
   webPreferences: {
-    contextIsolation: true,        // ✅ Enabled
-    nodeIntegration: false,         // ✅ Disabled
-    sandbox: true,                  // ✅ Enabled
+    contextIsolation: true,       // ✅ Enabled
+    nodeIntegration: false,        // ✅ Disabled
+    sandbox: true,                 // ✅ Enabled
     preload: join(__dirname, '../preload/index.js'),
   },
 });
 
 // Disable navigation
-mainWindow.webContents.on('will-navigate', (event) => {
-  event.preventDefault();
-});
+mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
 
 // Disable new window creation
-mainWindow.webContents.setWindowOpenHandler(() => {
-  return { action: 'deny' };
-});
+mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 ```
 
 ---
@@ -1862,15 +1274,13 @@ mainWindow.webContents.setWindowOpenHandler(() => {
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron-vite preview",
     "lint": "eslint src --ext .ts,.tsx",
     "format": "prettier --write src",
     "typecheck": "tsc --noEmit",
     "package": "electron-builder build --publish never",
     "package:mac": "electron-builder build --mac --publish never",
     "package:win": "electron-builder build --win --publish never",
-    "package:linux": "electron-builder build --linux --publish never",
-    "release": "electron-builder build --publish always"
+    "package:linux": "electron-builder build --linux --publish never"
   }
 }
 ```
@@ -1880,24 +1290,18 @@ mainWindow.webContents.setWindowOpenHandler(() => {
 ```json
 // electron-builder.json
 {
-  "appId": "com.gmocu.app",
-  "productName": "GMOCU",
+  "appId": "com.wfrs.jlab",
+  "productName": "JLab",
   "directories": {
     "buildResources": "resources",
     "output": "dist"
   },
-  "files": [
-    "dist/**/*",
-    "package.json"
-  ],
+  "files": ["dist/**/*", "package.json"],
   "mac": {
     "category": "public.app-category.productivity",
     "target": ["dmg", "zip"],
     "icon": "resources/icons/icon.icns",
-    "hardenedRuntime": true,
-    "gatekeeperAssess": false,
-    "entitlements": "resources/entitlements.mac.plist",
-    "entitlementsInherit": "resources/entitlements.mac.plist"
+    "hardenedRuntime": true
   },
   "win": {
     "target": ["nsis", "portable"],
@@ -1915,40 +1319,6 @@ mainWindow.webContents.setWindowOpenHandler(() => {
 }
 ```
 
-### Auto-Updates (Future)
-
-```typescript
-// src/main/auto-updater.ts
-
-import { autoUpdater } from 'electron-updater';
-import { app, BrowserWindow } from 'electron';
-
-export function setupAutoUpdater(mainWindow: BrowserWindow) {
-  // Check for updates on startup (after 3 seconds)
-  setTimeout(() => {
-    autoUpdater.checkForUpdates();
-  }, 3000);
-  
-  // Check every hour
-  setInterval(() => {
-    autoUpdater.checkForUpdates();
-  }, 60 * 60 * 1000);
-  
-  autoUpdater.on('update-available', () => {
-    mainWindow.webContents.send('update:available');
-  });
-  
-  autoUpdater.on('update-downloaded', () => {
-    mainWindow.webContents.send('update:downloaded');
-  });
-  
-  // IPC handler to trigger install
-  ipcMain.handle('update:install', () => {
-    autoUpdater.quitAndInstall();
-  });
-}
-```
-
 ---
 
 ## 12. Development Workflow
@@ -1960,8 +1330,8 @@ export function setupAutoUpdater(mainWindow: BrowserWindow) {
 npm install
 
 # 2. Set up database
-npm run db:generate  # Generate Drizzle schema
-npm run db:migrate   # Run migrations
+npm run db:generate
+npm run db:migrate
 
 # 3. Start development
 npm run dev
@@ -1970,40 +1340,27 @@ npm run dev
 ### Development Commands
 
 ```bash
-# Development
-npm run dev          # Start with HMR
-
-# Type checking
-npm run typecheck    # Check types without emitting
-
-# Linting & Formatting
-npm run lint         # ESLint
-npm run format       # Prettier
-
-# Database
-npm run db:generate  # Generate migration from schema changes
-npm run db:migrate   # Apply migrations
-npm run db:studio    # Open Drizzle Studio (visual DB editor)
-
-# Building
-npm run build        # Build for current platform
-npm run package      # Package for current platform
-npm run package:mac  # Package for macOS
-npm run package:win  # Package for Windows
-npm run package:linux # Package for Linux
+npm run dev            # Start with HMR
+npm run typecheck      # Check types
+npm run lint           # ESLint
+npm run format         # Prettier
+npm run db:generate    # Generate migration from schema changes
+npm run db:migrate     # Apply migrations
+npm run db:studio      # Drizzle Studio (visual DB editor)
+npm run package        # Package for current platform
 ```
 
 ### Git Workflow
 
 ```
 main
-  ├──  feature/plasmids-crud
-  ├──  feature/features-glossary
-  ├──  feature/ice-integration
-  └──  bugfix/table-sorting
+  ├── feature/plasmids-crud
+  ├── feature/features-glossary
+  ├── feature/ice-integration
+  └── bugfix/table-sorting
 
-Release branches: release/v2.0.0
-Tags: v2.0.0, v2.0.1, etc.
+Release branches: release/v1.0.0
+Tags: v1.0.0, v1.0.1, etc.
 ```
 
 ---
@@ -2011,17 +1368,11 @@ Tags: v2.0.0, v2.0.1, etc.
 ## Next Steps
 
 1. ✅ Architecture defined
-2. 🔄 Create project scaffolding  
-3. 🔄 Set up database schema + migrations
-4. 🔄 Implement IPC layer
-5. 🔄 Build core components
-6. 🔄 Implement features (plasmids, features, organisms, GMOs)
-7. 🔄 Add external integrations
-8. 🔄 Testing & refinement
+2. ✅ Renamed to JLab
+3. 🔄 Plan migration runner (schema changes for installed instances)
+4. 🔄 Stress-test data model
+5. 🔄 Gather Julia's domain knowledge input on open planning questions
+6. 🔄 Create project scaffolding
+7. 🔄 Implement IPC layer + core components
+8. 🔄 Add external integrations
 9. 🔄 Packaging & distribution
-
----
-
-**This architecture is production-ready and scalable.**
-
-Ready to start scaffolding?
