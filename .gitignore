@@ -28,12 +28,8 @@ logs/
 *.db
 *.sqlite
 
-# Build outputs
-*.exe
-*.app
-*.dmg
-*.deb
-*.rpm
+# Packaged distributable output
+dist/
 
 # Example/reference files
 example_files/

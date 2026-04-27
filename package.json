@@ -16,7 +16,11 @@
     "start:log": "vitest run && env -u ELECTRON_RUN_AS_NODE electron-vite dev 2>&1 | tee app.log",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "dist:all": "electron-vite build && electron-builder --win --mac --linux"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -51,6 +55,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "drizzle-kit": "^0.30.0",
     "electron": "^32.3.3",
+    "electron-builder": "^26.8.1",
     "electron-rebuild": "^3.2.9",
     "electron-vite": "^2.3.0",
     "eslint": "^8.57.0",
@@ -61,5 +66,54 @@
     "sql.js": "^1.14.1",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "build": {
+    "appId": "nl.freedom.rs.jlab",
+    "productName": "JLab",
+    "copyright": "Copyright © 2026 Jores Lab",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "out/**/*",
+      "!out/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build-resources/icons/win/icon.ico"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "build-resources/icons/mac/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "icon": "build-resources/icons/png/512x512.png",
+      "category": "Science"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "npmRebuild": true,
+    "buildDependenciesFromSource": false,
+    "nativeRebuilder": "legacy"
   }
 }
